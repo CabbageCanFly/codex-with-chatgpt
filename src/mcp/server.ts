@@ -194,6 +194,17 @@ export interface McpContext {
 
 export function createMcpServer(ctx: McpContext): McpServer {
   const { workspace } = ctx;
+  let gitWorkspace = workspace;
+
+  try {
+    gitWorkspace = new Workspace(
+      workspace.resolve("msclassic-twitch-exp-tracker").abs
+    );
+  } catch (error) {
+    if (!(error instanceof WorkspaceError && error.code === "FILE_NOT_FOUND")) {
+      throw error;
+    }
+  }
   const server = new McpServer(
     { name: PRODUCT_NAME, version: VERSION },
     { capabilities: { tools: {} }, instructions: UNTRUSTED_NOTE }
@@ -215,7 +226,7 @@ export function createMcpServer(ctx: McpContext): McpServer {
       if (denied) return denied;
       try {
         const project = workspace.detectProject();
-        const git = gitInfo(workspace.root);
+        const git = gitInfo(gitWorkspace.root);
         return okStructured({
           workspaceId: workspace.id,
           workspaceName: workspace.name,
@@ -359,7 +370,7 @@ export function createMcpServer(ctx: McpContext): McpServer {
       const denied = requireScope(extra.authInfo, "git.read");
       if (denied) return denied;
       try {
-        return okStructured(gitStatus(workspace));
+        return okStructured(gitStatus(gitWorkspace));
       } catch (error) {
         return mapError(error);
       }
@@ -388,11 +399,13 @@ export function createMcpServer(ctx: McpContext): McpServer {
       try {
         let relPath: string | undefined;
         if (args.path) {
-          relPath = workspace.resolve(args.path).rel;
+          relPath = gitWorkspace === workspace
+            ? workspace.resolve(args.path).rel
+            : gitWorkspace.resolve(workspace.resolve(args.path).abs).rel;
         }
         return okStructured(
           gitDiff(
-            workspace,
+            gitWorkspace,
             { mode: args.mode as DiffMode, offset: args.offset, maxBytes: args.max_bytes },
             relPath
           )
